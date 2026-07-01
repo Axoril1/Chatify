@@ -1,15 +1,28 @@
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useAuthStore } from "./store/useAuthStore";
+import { useSocketStore } from "./store/useSocketStore";
+import { useChatStore } from "./store/useChatStore";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 
 function App() {
   const { user, isLoading, checkAuth } = useAuthStore();
+  const { connect, disconnect } = useSocketStore();
+  const { fetchChannels } = useChatStore();
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      connect();
+      fetchChannels();
+    } else {
+      disconnect();
+    }
+  }, [user]);
 
   if (isLoading) {
     return (
