@@ -39,9 +39,7 @@ router.post("/", requireAuth, async (req, res) => {
     });
 
     const populated = await message.populate("senderId", "username avatarUrl status");
-
     await Channel.findByIdAndUpdate(channelId, { lastMessage: message._id });
-
     io.to(channelId).emit("message:new", populated);
 
     res.status(201).json({ message: populated });
@@ -90,6 +88,32 @@ router.delete("/:id", requireAuth, async (req, res) => {
     res.json({ message: "Message deleted" });
   } catch (err) {
     res.status(500).json({ message: "Failed to delete message", error: err.message });
+  }
+});
+
+router.post("/:id/react", requireAuth, async (req, res) => {
+  try {
+    const { emoji } = req.body;
+    const message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ message: "Message not found" });
+
+    const existingIndex = message.reactions.findIndex(
+      (r) => r.userId.toString() === req.user._id.toString() && r.emoji === emoji
+    );
+
+    if (existingIndex > -1) {
+      message.reactions.splice(existingIndex, 1);
+    } else {
+      message.reactions.push({ userId: req.user._id, emoji });
+    }
+
+    await message.save();
+    const populated = await message.populate("senderId", "username avatarUrl status");
+    io.to(message.channelId.toString()).emit("message:updated", populated);
+
+    res.json({ message: populated });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to react", error: err.message });
   }
 });
 

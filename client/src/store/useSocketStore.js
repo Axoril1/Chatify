@@ -6,6 +6,7 @@ const SOCKET_URL = "http://localhost:5000";
 export const useSocketStore = create((set, get) => ({
   socket: null,
   isConnected: false,
+  onlineUsers: [],
 
   connect: () => {
     if (get().socket?.connected) return;
@@ -30,11 +31,15 @@ export const useSocketStore = create((set, get) => ({
       console.error("Socket connection error:", err.message);
     });
 
+    socket.on("users:online", (userIds) => {
+      set({ onlineUsers: userIds });
+    });
+
     set({ socket });
   },
 
   disconnect: () => {
     get().socket?.disconnect();
-    set({ socket: null, isConnected: false });
+    set({ socket: null, isConnected: false, onlineUsers: [] });
   },
 }));
