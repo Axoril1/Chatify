@@ -5,6 +5,7 @@ import { useSocketStore } from "./store/useSocketStore";
 import { useChatStore } from "./store/useChatStore";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import ChatPage from "./pages/ChatPage";
 
 function App() {
   const { user, isLoading, checkAuth } = useAuthStore();
@@ -44,7 +45,7 @@ function App() {
       <Routes>
         <Route path="/login" element={!user ? <LoginPage /> : <Navigate to="/" />} />
         <Route path="/signup" element={!user ? <SignupPage /> : <Navigate to="/" />} />
-        <Route path="/" element={user ? <div style={{color:"var(--text-primary)",padding:"2rem"}}>Chat coming soon... logged in as {user.username}</div> : <Navigate to="/login" />} />
+        <Route path="/" element={user ? <ChatPage /> : <Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>
   );
