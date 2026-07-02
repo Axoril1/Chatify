@@ -9,7 +9,7 @@ import ChatPage from "./pages/ChatPage";
 
 function App() {
   const { user, isLoading, checkAuth } = useAuthStore();
-  const { connect, disconnect } = useSocketStore();
+  const { connect, disconnect, isConnected } = useSocketStore();
   const { fetchChannels } = useChatStore();
 
   useEffect(() => {
@@ -19,11 +19,17 @@ function App() {
   useEffect(() => {
     if (user) {
       connect();
-      fetchChannels();
     } else {
       disconnect();
     }
   }, [user]);
+
+  // Fetch channels only after socket is connected
+  useEffect(() => {
+    if (isConnected) {
+      fetchChannels();
+    }
+  }, [isConnected]);
 
   if (isLoading) {
     return (

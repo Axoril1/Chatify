@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import axiosClient from "../lib/axios";
+import { useSocketStore } from "./useSocketStore";
 
 export const useChatStore = create((set, get) => ({
   channels: [],
@@ -23,7 +24,17 @@ export const useChatStore = create((set, get) => ({
   },
 
   setActiveChannel: async (channel) => {
+    const socket = useSocketStore.getState().socket;
+
+    // Leave previous room
+    const prev = get().activeChannel;
+    if (prev) socket?.emit("room:leave", prev._id);
+
+    // Join new room
+    socket?.emit("room:join", channel._id);
+
     set({ activeChannel: channel, messages: [], isLoadingMessages: true });
+
     try {
       const res = await axiosClient.get(`/messages/${channel._id}`);
       set({ messages: res.data.messages, isLoadingMessages: false });
@@ -39,15 +50,15 @@ export const useChatStore = create((set, get) => ({
 
   updateMessage: (updated) => {
     set((state) => ({
-      messages: state.messages.map((m) =>
-        m._id === updated._id ? updated : m
-      ),
+      messages: state.messages.map((m) => m._id === updated._id ? updated : m),
     }));
   },
 
   removeMessage: (messageId) => {
     set((state) => ({
-      messages: state.messages.filter((m) => m._id !== messageId),
+      messages: state.messages.map((m) =>
+        m._id === messageId ? { ...m, deletedAt: new Date() } : m
+      ),
     }));
   },
 
