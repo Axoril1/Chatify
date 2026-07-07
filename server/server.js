@@ -7,27 +7,20 @@ import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import { connectDB } from "./config/db.js";
 import authRoutes from "./routes/auth.routes.js";
-import User from "./models/User.js";
-
-import Message from "./models/Message.js";
-import Channel from "./models/Channel.js";
-
 import channelRoutes from "./routes/channel.routes.js";
 import messageRoutes from "./routes/message.routes.js";
-
-
+import User from "./models/User.js";
+import Message from "./models/Message.js";
+import Channel from "./models/Channel.js";
 
 dotenv.config();
 connectDB();
 
 const app = express();
-const httpServer = createServer(app); 
+const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.CLIENT_URL,
-    credentials: true,
-  },
+  cors: { origin: process.env.CLIENT_URL, credentials: true },
 });
 
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
@@ -46,10 +39,8 @@ io.use((socket, next) => {
   try {
     const cookie = socket.handshake.headers.cookie;
     if (!cookie) return next(new Error("No cookie"));
-
     const tokenMatch = cookie.match(/token=([^;]+)/);
     if (!tokenMatch) return next(new Error("No token"));
-
     const decoded = jwt.verify(tokenMatch[1], process.env.JWT_SECRET);
     socket.userId = decoded.userId;
     next();
@@ -58,10 +49,17 @@ io.use((socket, next) => {
   }
 });
 
+const broadcastOnlineUsers = async () => {
+  const sockets = await io.fetchSockets();
+  const onlineUserIds = [...new Set(sockets.map((s) => s.userId))];
+  io.emit("users:online", onlineUserIds);
+};
+
 io.on("connection", async (socket) => {
   console.log(`User connected: ${socket.userId}`);
 
   await User.findByIdAndUpdate(socket.userId, { status: "online", lastSeen: new Date() });
+  broadcastOnlineUsers();
 
   socket.on("room:join", (channelId) => {
     socket.join(channelId);
@@ -84,9 +82,7 @@ io.on("connection", async (socket) => {
       });
 
       const populated = await message.populate("senderId", "username avatarUrl status");
-
       await Channel.findByIdAndUpdate(channelId, { lastMessage: message._id });
-
       io.to(channelId).emit("message:new", populated);
     } catch (err) {
       socket.emit("error", { message: "Failed to send message" });
@@ -103,10 +99,8 @@ io.on("connection", async (socket) => {
 
   socket.on("disconnect", async () => {
     console.log(`User disconnected: ${socket.userId}`);
-    await User.findByIdAndUpdate(socket.userId, {
-      status: "offline",
-      lastSeen: new Date(),
-    });
+    await User.findByIdAndUpdate(socket.userId, { status: "offline", lastSeen: new Date() });
+    broadcastOnlineUsers();
   });
 });
 

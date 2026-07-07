@@ -6,13 +6,15 @@ export const useChatStore = create((set, get) => ({
   channels: [],
   activeChannel: null,
   messages: [],
+  isLoadingChannels: true,
   isLoadingMessages: false,
   typingUsers: {},
 
   fetchChannels: async () => {
+    set({ isLoadingChannels: true });
     try {
       const res = await axiosClient.get("/channels");
-      set({ channels: res.data.channels });
+      set({ channels: res.data.channels, isLoadingChannels: false });
 
       if (!get().activeChannel) {
         const general = res.data.channels.find((c) => c.name === "general");
@@ -20,17 +22,16 @@ export const useChatStore = create((set, get) => ({
       }
     } catch (err) {
       console.error("Failed to fetch channels:", err);
+      set({ isLoadingChannels: false });
     }
   },
 
   setActiveChannel: async (channel) => {
     const socket = useSocketStore.getState().socket;
 
-    // Leave previous room
     const prev = get().activeChannel;
     if (prev) socket?.emit("room:leave", prev._id);
 
-    // Join new room
     socket?.emit("room:join", channel._id);
 
     set({ activeChannel: channel, messages: [], isLoadingMessages: true });

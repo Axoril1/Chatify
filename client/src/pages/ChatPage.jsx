@@ -1,8 +1,11 @@
+import { useState } from "react";
 import Sidebar from "../components/chat/Sidebar";
 import MessageList from "../components/chat/MessageList";
 import MessageInput from "../components/chat/MessageInput";
 
 export default function ChatPage() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   return (
     <div style={{
       display: "flex",
@@ -10,14 +13,15 @@ export default function ChatPage() {
       background: "var(--bg-base)",
       overflow: "hidden",
     }}>
-      <Sidebar />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div style={{
         flex: 1,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        minWidth: 0,
       }}>
-        <MessageList />
+        <MessageList onMenuClick={() => setSidebarOpen(true)} />
         <MessageInput />
       </div>
     </div>

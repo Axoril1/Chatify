@@ -43,7 +43,6 @@ export const useSocketStore = create((set, get) => ({
       set({ onlineUsers: userIds });
     });
 
-    // Set socket in state immediately
     set({ socket });
   },
 
