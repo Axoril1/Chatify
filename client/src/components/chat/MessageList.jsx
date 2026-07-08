@@ -2,10 +2,77 @@ import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../../store/useChatStore";
 import { useSocketStore } from "../../store/useSocketStore";
 import { useAuthStore } from "../../store/useAuthStore";
-import { BsPencil, BsTrash2, BsEmojiSmile, BsList } from "react-icons/bs";
+import { BsPencil, BsTrash2, BsEmojiSmile, BsList, BsFileEarmark, BsDownload, BsStars } from "react-icons/bs";
 import axiosClient from "../../lib/axios";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
+
+function formatBytes(bytes) {
+  if (!bytes) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let val = bytes;
+  while (val >= 1024 && i < units.length - 1) {
+    val /= 1024;
+    i++;
+  }
+  return `${val.toFixed(val < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function Attachment({ attachment }) {
+  if (!attachment?.url) return null;
+
+  if (attachment.resourceType === "image") {
+    return (
+      <a href={attachment.url} target="_blank" rel="noopener noreferrer">
+        <img
+          src={attachment.url}
+          alt={attachment.fileName}
+          style={{
+            maxWidth: "280px",
+            maxHeight: "280px",
+            borderRadius: "8px",
+            marginTop: "0.375rem",
+            display: "block",
+            border: "1px solid var(--border)",
+          }}
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={attachment.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.625rem",
+        padding: "0.625rem 0.75rem",
+        background: "var(--bg-elevated)",
+        border: "1px solid var(--border)",
+        borderRadius: "8px",
+        marginTop: "0.375rem",
+        maxWidth: "280px",
+        textDecoration: "none",
+        color: "var(--text-primary)",
+      }}
+    >
+      <BsFileEarmark size={20} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: "0.8125rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {attachment.fileName}
+        </p>
+        <p style={{ fontSize: "0.6875rem", color: "var(--text-secondary)" }}>
+          {formatBytes(attachment.fileSize)}
+        </p>
+      </div>
+      <BsDownload size={14} color="var(--text-secondary)" style={{ flexShrink: 0 }} />
+    </a>
+  );
+}
 
 function MessageSkeleton() {
   const rows = [
@@ -29,10 +96,62 @@ function MessageSkeleton() {
   );
 }
 
+function AIStreamBubble({ text }) {
+  return (
+    <div style={{
+      display: "flex",
+      gap: "0.625rem",
+      alignItems: "flex-start",
+      padding: "0.25rem 0.5rem",
+    }}>
+      <div style={{
+        width: "32px",
+        height: "32px",
+        borderRadius: "50%",
+        background: "var(--accent-muted)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        marginTop: "0.125rem",
+      }}>
+        <BsStars size={14} color="var(--accent)" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", marginBottom: "0.25rem" }}>
+          <span style={{ fontSize: "0.8125rem", fontWeight: "600", color: "var(--accent)" }}>
+            AI Assistant
+          </span>
+          <span style={{ fontSize: "0.6875rem", color: "var(--text-secondary)" }}>
+            typing...
+          </span>
+        </div>
+        <p style={{
+          fontSize: "0.875rem",
+          color: "var(--text-primary)",
+          lineHeight: "1.5",
+          wordBreak: "break-word",
+        }}>
+          {text}
+          <span style={{
+            display: "inline-block",
+            width: "6px",
+            height: "14px",
+            background: "var(--accent)",
+            marginLeft: "2px",
+            verticalAlign: "middle",
+            animation: "skeleton-pulse 0.8s ease-in-out infinite",
+          }} />
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function MessageList({ onMenuClick }) {
   const {
     messages, activeChannel, isLoadingMessages,
-    typingUsers,
+    typingUsers, aiStreams,
   } = useChatStore();
   const { socket } = useSocketStore();
   const { user } = useAuthStore();
@@ -50,6 +169,10 @@ export default function MessageList({ onMenuClick }) {
     socket.off("message:deleted");
     socket.off("typing:start");
     socket.off("typing:stop");
+    socket.off("ai:start");
+    socket.off("ai:chunk");
+    socket.off("ai:done");
+    socket.off("ai:error");
 
     socket.on("message:new", (msg) => {
       useChatStore.getState().addMessage(msg);
@@ -66,6 +189,18 @@ export default function MessageList({ onMenuClick }) {
     socket.on("typing:stop", ({ userId }) => {
       useChatStore.getState().clearTyping(userId);
     });
+    socket.on("ai:start", ({ streamId }) => {
+      useChatStore.getState().startAIStream(streamId);
+    });
+    socket.on("ai:chunk", ({ streamId, delta }) => {
+      useChatStore.getState().appendAIChunk(streamId, delta);
+    });
+    socket.on("ai:done", ({ streamId, message }) => {
+      useChatStore.getState().finishAIStream(streamId, message);
+    });
+    socket.on("ai:error", ({ streamId }) => {
+      useChatStore.getState().errorAIStream(streamId);
+    });
 
     return () => {
       socket.off("message:new");
@@ -73,12 +208,16 @@ export default function MessageList({ onMenuClick }) {
       socket.off("message:deleted");
       socket.off("typing:start");
       socket.off("typing:stop");
+      socket.off("ai:start");
+      socket.off("ai:chunk");
+      socket.off("ai:done");
+      socket.off("ai:error");
     };
   }, [socket]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, aiStreams]);
 
   const handleEdit = async (msg) => {
     if (!editContent.trim()) return;
@@ -109,6 +248,7 @@ export default function MessageList({ onMenuClick }) {
   };
 
   const typingList = Object.values(typingUsers);
+  const aiStreamEntries = Object.entries(aiStreams);
 
   const MenuButton = () => (
     <button
@@ -158,6 +298,7 @@ export default function MessageList({ onMenuClick }) {
       flexDirection: "column",
       gap: "0.25rem",
     }}>
+      {/* Channel header */}
       <div style={{
         paddingBottom: "1rem",
         borderBottom: "1px solid var(--border)",
@@ -171,7 +312,7 @@ export default function MessageList({ onMenuClick }) {
             # {activeChannel.name}
           </h2>
           <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-            Welcome to #{activeChannel.name}
+            Welcome to #{activeChannel.name} — type @ai or /ai to ask the assistant
           </p>
         </div>
       </div>
@@ -180,7 +321,7 @@ export default function MessageList({ onMenuClick }) {
         <MessageSkeleton />
       ) : (
         <>
-          {messages.length === 0 && (
+          {messages.length === 0 && aiStreamEntries.length === 0 && (
             <div style={{
               flex: 1,
               display: "flex",
@@ -195,6 +336,7 @@ export default function MessageList({ onMenuClick }) {
 
           {messages.map((msg) => {
             const isOwn = msg.senderId._id === user._id || msg.senderId === user._id;
+            const isAI = msg.type === "ai";
             const isHovered = hoveredId === msg._id;
             const isEditing = editingId === msg._id;
             const isDeleted = !!msg.deletedAt;
@@ -220,11 +362,12 @@ export default function MessageList({ onMenuClick }) {
                   transition: "background 0.1s ease",
                 }}
               >
+                {/* Avatar */}
                 <div style={{
                   width: "32px",
                   height: "32px",
                   borderRadius: "50%",
-                  background: isOwn ? "var(--accent)" : "var(--bg-elevated)",
+                  background: isAI ? "var(--accent-muted)" : isOwn ? "var(--accent)" : "var(--bg-elevated)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -234,15 +377,16 @@ export default function MessageList({ onMenuClick }) {
                   flexShrink: 0,
                   marginTop: "0.125rem",
                 }}>
-                  {msg.senderId.username?.[0]?.toUpperCase() || "?"}
+                  {isAI ? <BsStars size={14} color="var(--accent)" /> : (msg.senderId.username?.[0]?.toUpperCase() || "?")}
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Sender + time */}
                   <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", marginBottom: "0.25rem" }}>
                     <span style={{
                       fontSize: "0.8125rem",
                       fontWeight: "600",
-                      color: isOwn ? "var(--accent)" : "var(--text-primary)",
+                      color: isAI ? "var(--accent)" : isOwn ? "var(--accent)" : "var(--text-primary)",
                     }}>
                       {msg.senderId.username || "Unknown"}
                     </span>
@@ -256,6 +400,7 @@ export default function MessageList({ onMenuClick }) {
                     )}
                   </div>
 
+                  {/* Content or edit input */}
                   {isEditing ? (
                     <div style={{ display: "flex", gap: "0.5rem", alignItems: "center"}}>
                       <input
@@ -307,17 +452,21 @@ export default function MessageList({ onMenuClick }) {
                       </button>
                     </div>
                   ) : (
-                    <p style={{
-                      fontSize: "0.875rem",
-                      color: isDeleted ? "var(--text-secondary)" : "var(--text-primary)",
-                      fontStyle: isDeleted ? "italic" : "normal",
-                      lineHeight: "1.5",
-                      wordBreak: "break-word",
-                    }}>
-                      {isDeleted ? "This message was deleted" : msg.content}
-                    </p>
+                    <>
+                      <p style={{
+                        fontSize: "0.875rem",
+                        color: isDeleted ? "var(--text-secondary)" : "var(--text-primary)",
+                        fontStyle: isDeleted ? "italic" : "normal",
+                        lineHeight: "1.5",
+                        wordBreak: "break-word",
+                      }}>
+                        {isDeleted ? "This message was deleted" : msg.content}
+                      </p>
+                      {!isDeleted && <Attachment attachment={msg.attachment} />}
+                    </>
                   )}
 
+                  {/* Reactions display */}
                   {reactionGroups && Object.keys(reactionGroups).length > 0 && (
                     <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.375rem", flexWrap: "wrap" }}>
                       {Object.entries(reactionGroups).map(([emoji, count]) => (
@@ -344,7 +493,8 @@ export default function MessageList({ onMenuClick }) {
                   )}
                 </div>
 
-                {isHovered && !isDeleted && (
+                {/* Hover action buttons */}
+                {isHovered && !isDeleted && !isAI && (
                   <div style={{
                     position: "absolute",
                     right: "0.5rem",
@@ -460,6 +610,10 @@ export default function MessageList({ onMenuClick }) {
               </div>
             );
           })}
+
+          {aiStreamEntries.map(([streamId, text]) => (
+            <AIStreamBubble key={streamId} text={text} />
+          ))}
 
           {typingList.length > 0 && (
             <p style={{

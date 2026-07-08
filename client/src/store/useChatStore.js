@@ -9,7 +9,7 @@ export const useChatStore = create((set, get) => ({
   isLoadingChannels: true,
   isLoadingMessages: false,
   typingUsers: {},
-
+  aiStreams: {},
   fetchChannels: async () => {
     set({ isLoadingChannels: true });
     try {
@@ -74,6 +74,32 @@ export const useChatStore = create((set, get) => ({
       const updated = { ...state.typingUsers };
       delete updated[userId];
       return { typingUsers: updated };
+    });
+  },
+
+  startAIStream: (streamId) => {
+    set((state) => ({ aiStreams: { ...state.aiStreams, [streamId]: "" } }));
+  },
+
+  appendAIChunk: (streamId, delta) => {
+    set((state) => ({
+      aiStreams: { ...state.aiStreams, [streamId]: (state.aiStreams[streamId] || "") + delta },
+    }));
+  },
+
+  finishAIStream: (streamId, message) => {
+    set((state) => {
+      const streams = { ...state.aiStreams };
+      delete streams[streamId];
+      return { aiStreams: streams, messages: [...state.messages, message] };
+    });
+  },
+
+  errorAIStream: (streamId) => {
+    set((state) => {
+      const streams = { ...state.aiStreams };
+      delete streams[streamId];
+      return { aiStreams: streams };
     });
   },
 }));

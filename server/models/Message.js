@@ -9,10 +9,18 @@ const messageSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId, ref: "User", required: true 
     },
     content: { 
-        type: String, required: true, trim: true 
+        type: String, trim: true, default: ""
     },
     type: { 
-        type: String, enum: ["text", "image", "ai"], default: "text" 
+        type: String, enum: ["text", "image", "file", "ai"], default: "text" 
+    },
+    attachment: {
+      url: String,
+      publicId: String,
+      fileName: String,
+      fileType: String,
+      fileSize: Number,
+      resourceType: String,
     },
     reactions: [
       {
@@ -25,5 +33,11 @@ const messageSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+messageSchema.pre("validate", function () {
+  if (!this.content?.trim() && !this.attachment?.url) {
+    throw new Error("Message must have content or an attachment");
+  }
+});
 
 export default mongoose.model("Message", messageSchema);

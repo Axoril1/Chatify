@@ -21,21 +21,23 @@ router.get("/:channelId", requireAuth, async (req, res) => {
 
     res.json({ messages: messages.reverse() });
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch messages", error: err.message });
+    res.status(500).json({ message: "Failed to fetch messages", error: err.message});
   }
 });
 
 router.post("/", requireAuth, async (req, res) => {
   try {
-    const { channelId, content } = req.body;
-    if (!channelId || !content) {
-      return res.status(400).json({ message: "channelId and content are required" });
+    const { channelId, content, attachment } = req.body;
+    if (!channelId || (!content?.trim() && !attachment?.url)) {
+      return res.status(400).json({ message: "channelId and content or attachment are required" });
     }
 
     const message = await Message.create({
       channelId,
       senderId: req.user._id,
-      content,
+      content: content?.trim() || "",
+      type: attachment ? (attachment.resourceType === "image" ? "image" : "file") : "text",
+      attachment: attachment || undefined,
     });
 
     const populated = await message.populate("senderId", "username avatarUrl status");
@@ -87,7 +89,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
     res.json({ message: "Message deleted" });
   } catch (err) {
-    res.status(500).json({ message: "Failed to delete message", error: err.message });
+    res.status(500).json({ message: "Failed to delete message", error: err.message});
   }
 });
 
