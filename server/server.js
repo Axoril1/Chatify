@@ -10,9 +10,12 @@ import authRoutes from "./routes/auth.routes.js";
 import channelRoutes from "./routes/channel.routes.js";
 import messageRoutes from "./routes/message.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
+import automationRoutes from "./routes/automation.routes.js";
+import summarizeRoutes from "./routes/summarize.routes.js";
 import User from "./models/User.js";
 import Message from "./models/Message.js";
 import Channel from "./models/Channel.js";
+import AutomationRule from "./models/AutomationRule.js";
 import { groq, AI_MODEL } from "./lib/groq.js";
 
 dotenv.config();
@@ -33,6 +36,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/automations", automationRoutes);
+app.use("/api/summarize", summarizeRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
@@ -118,6 +123,30 @@ const handleAIRequest = async (channelId, prompt) => {
   }
 };
 
+// Fires a bot reply for the first matching keyword rule in a channel.
+// Skips checking if the message itself came from the bot, to avoid loops.
+const checkAutomationRules = async (channelId, senderId, trimmedContent) => {
+  if (!trimmedContent || senderId.toString() === aiBotUser._id.toString()) return;
+
+  const rules = await AutomationRule.find({ channelId });
+  if (rules.length === 0) return;
+
+  const lower = trimmedContent.toLowerCase();
+  const match = rules.find((r) => lower.includes(r.keyword));
+  if (!match) return;
+
+  const botMessage = await Message.create({
+    channelId,
+    senderId: aiBotUser._id,
+    content: match.response,
+    type: "ai",
+  });
+
+  const populated = await botMessage.populate("senderId", "username avatarUrl status");
+  await Channel.findByIdAndUpdate(channelId, { lastMessage: botMessage._id });
+  io.to(channelId).emit("message:new", populated);
+};
+
 io.on("connection", async (socket) => {
   console.log(`User connected: ${socket.userId}`);
 
@@ -134,13 +163,9 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("message:send", async (data) => {
-    console.log("RECEIVED message:send:", data);
     try {
       const { channelId, content, attachment } = data;
-      if (!channelId || (!content?.trim() && !attachment?.url)) {
-        console.log("REJECTED: missing channelId or content/attachment");
-        return;
-      }
+      if (!channelId || (!content?.trim() && !attachment?.url)) return;
 
       const trimmed = content?.trim() || "";
 
@@ -155,12 +180,13 @@ io.on("connection", async (socket) => {
       const populated = await message.populate("senderId", "username avatarUrl status");
       await Channel.findByIdAndUpdate(channelId, { lastMessage: message._id });
       io.to(channelId).emit("message:new", populated);
-      console.log("BROADCAST message:new to room:", channelId);
 
       // Detect @ai / /ai trigger
       const aiMatch = trimmed.match(/^(?:@ai|\/ai)\s+([\s\S]+)/i);
       if (aiMatch && aiBotUser) {
         handleAIRequest(channelId, aiMatch[1]);
+      } else if (aiBotUser) {
+        checkAutomationRules(channelId, socket.userId, trimmed);
       }
     } catch (err) {
       console.error("message:send ERROR:", err.message);

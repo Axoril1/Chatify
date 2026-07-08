@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../../store/useChatStore";
 import { useSocketStore } from "../../store/useSocketStore";
 import { useAuthStore } from "../../store/useAuthStore";
-import { BsPencil, BsTrash2, BsEmojiSmile, BsList, BsFileEarmark, BsDownload, BsStars } from "react-icons/bs";
+import { BsPencil, BsTrash2, BsEmojiSmile, BsList, BsFileEarmark, BsDownload, BsStars, BsClipboardData, BsRobot } from "react-icons/bs";
 import axiosClient from "../../lib/axios";
+import SummaryModal from "./SummaryModal";
+import AutomationModal from "./AutomationModal";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
 
@@ -42,7 +44,7 @@ function Attachment({ attachment }) {
   }
 
   return (
-    <a
+    
       href={attachment.url}
       target="_blank"
       rel="noopener noreferrer"
@@ -160,6 +162,8 @@ export default function MessageList({ onMenuClick }) {
   const [editingId, setEditingId] = useState(null);
   const [editContent, setEditContent] = useState("");
   const [showReactions, setShowReactions] = useState(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [showAutomations, setShowAutomations] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -305,17 +309,53 @@ export default function MessageList({ onMenuClick }) {
         marginBottom: "0.5rem",
         display: "flex",
         alignItems: "center",
+        justifyContent: "space-between",
       }}>
-        <MenuButton />
-        <div>
-          <h2 style={{ fontSize: "1rem", fontWeight: "600", color: "var(--text-primary)" }}>
-            # {activeChannel.name}
-          </h2>
-          <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
-            Welcome to #{activeChannel.name} — type @ai or /ai to ask the assistant
-          </p>
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <MenuButton />
+          <div>
+            <h2 style={{ fontSize: "1rem", fontWeight: "600", color: "var(--text-primary)" }}>
+              # {activeChannel.name}
+            </h2>
+            <p style={{ fontSize: "0.75rem", color: "var(--text-secondary)", marginTop: "0.25rem" }}>
+              Welcome to #{activeChannel.name} — type @ai or /ai to ask the assistant
+            </p>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
+          <button
+            onClick={() => setShowSummary(true)}
+            title="Summarize channel"
+            style={{
+              width: "32px", height: "32px", borderRadius: "6px",
+              border: "1px solid var(--border)", background: "transparent",
+              color: "var(--text-secondary)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <BsClipboardData size={15} />
+          </button>
+          <button
+            onClick={() => setShowAutomations(true)}
+            title="Manage automations"
+            style={{
+              width: "32px", height: "32px", borderRadius: "6px",
+              border: "1px solid var(--border)", background: "transparent",
+              color: "var(--text-secondary)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <BsRobot size={15} />
+          </button>
         </div>
       </div>
+
+      {showSummary && (
+        <SummaryModal channelId={activeChannel._id} onClose={() => setShowSummary(false)} />
+      )}
+      {showAutomations && (
+        <AutomationModal channelId={activeChannel._id} onClose={() => setShowAutomations(false)} />
+      )}
 
       {isLoadingMessages ? (
         <MessageSkeleton />
