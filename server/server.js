@@ -16,7 +16,7 @@ import User from "./models/User.js";
 import Message from "./models/Message.js";
 import Channel from "./models/Channel.js";
 import AutomationRule from "./models/AutomationRule.js";
-import { groq, AI_MODEL } from "./lib/groq.js";
+import { groq, AI_MODEL, VISION_MODEL } from "./lib/groq.js";
 
 dotenv.config();
 connectDB();
@@ -79,24 +79,38 @@ const ensureAIBotUser = async () => {
   return bot;
 };
 
-const handleAIRequest = async (channelId, prompt) => {
+const handleAIRequest = async (channelId, prompt, imageUrl) => {
   const streamId = `ai-${Date.now()}`;
   io.to(channelId).emit("ai:start", { streamId });
 
   let fullText = "";
   try {
-    const stream = await groq.chat.completions.create({
-      model: AI_MODEL,
+    const userContent = imageUrl
+      ? [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: imageUrl } },
+        ]
+      : prompt;
+
+    const completionParams = {
+      model: imageUrl ? VISION_MODEL : AI_MODEL,
       max_tokens: 1024,
       messages: [
         {
           role: "system",
-          content: "You are a helpful AI assistant embedded in a team chat app called Chatify. Keep answers concise and friendly.",
+          content: "You are a helpful AI assistant embedded in a team chat app called Chatify. Keep answers concise and friendly. If an image is provided, describe and analyze it as part of your answer.",
         },
-        { role: "user", content: prompt },
+        { role: "user", content: userContent },
       ],
       stream: true,
-    });
+    };
+
+    // Qwen (vision) model streams its reasoning inline via <think> tags unless suppressed
+    if (imageUrl) {
+      completionParams.reasoning_format = "hidden";
+    }
+
+    const stream = await groq.chat.completions.create(completionParams);
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta?.content;
@@ -106,10 +120,13 @@ const handleAIRequest = async (channelId, prompt) => {
       }
     }
 
+    // Safety net: strip any <think>...</think> block that slipped through
+    const cleanText = fullText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
     const aiMessage = await Message.create({
       channelId,
       senderId: aiBotUser._id,
-      content: fullText.trim() || "Sorry, I couldn't generate a response.",
+      content: cleanText || "Sorry, I couldn't generate a response.",
       type: "ai",
     });
 
@@ -184,7 +201,20 @@ io.on("connection", async (socket) => {
       // Detect @ai / /ai trigger
       const aiMatch = trimmed.match(/^(?:@ai|\/ai)\s+([\s\S]+)/i);
       if (aiMatch && aiBotUser) {
-        handleAIRequest(channelId, aiMatch[1]);
+        let imageUrl = attachment?.resourceType === "image" ? attachment.url : null;
+
+        // No image on this message? Check for the most recent image in the channel,
+        // so "@ai what's in this photo" works after uploading separately.
+        if (!imageUrl) {
+          const lastImageMsg = await Message.findOne({
+            channelId,
+            "attachment.resourceType": "image",
+            deletedAt: null,
+          }).sort({ createdAt: -1 });
+          if (lastImageMsg) imageUrl = lastImageMsg.attachment.url;
+        }
+
+        handleAIRequest(channelId, aiMatch[1], imageUrl);
       } else if (aiBotUser) {
         checkAutomationRules(channelId, socket.userId, trimmed);
       }
