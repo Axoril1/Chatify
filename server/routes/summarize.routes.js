@@ -1,19 +1,21 @@
 import express from "express";
 import Message from "../models/Message.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate, summarizeSchema } from "../lib/validation.js";
+import { aiLimiter } from "../lib/rateLimiters.js";
 import { groq, AI_MODEL } from "../lib/groq.js";
 
 const router = express.Router();
 
-router.post("/:channelId", requireAuth, async (req, res) => {
+router.post("/:channelId", requireAuth, aiLimiter, validate(summarizeSchema), async (req, res) => {
   try {
     const { channelId } = req.params;
-    const { limit = 50 } = req.body;
+    const { limit } = req.body;
 
     const messages = await Message.find({ channelId, deletedAt: null })
       .populate("senderId", "username")
       .sort({ createdAt: -1 })
-      .limit(Number(limit));
+      .limit(limit);
 
     if (messages.length === 0) {
       return res.json({ summary: "No messages to summarize yet.", messageCount: 0 });

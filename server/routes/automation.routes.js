@@ -1,6 +1,7 @@
 import express from "express";
 import AutomationRule from "../models/AutomationRule.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate, automationCreateSchema } from "../lib/validation.js";
 
 const router = express.Router();
 
@@ -13,17 +14,14 @@ router.get("/:channelId", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, validate(automationCreateSchema), async (req, res) => {
   try {
     const { channelId, keyword, response } = req.body;
-    if (!channelId || !keyword?.trim() || !response?.trim()) {
-      return res.status(400).json({ message: "channelId, keyword, and response are required" });
-    }
 
     const rule = await AutomationRule.create({
       channelId,
-      keyword: keyword.trim(),
-      response: response.trim(),
+      keyword,
+      response,
       createdBy: req.user._id,
     });
 

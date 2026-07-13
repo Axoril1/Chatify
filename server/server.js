@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
@@ -17,6 +18,7 @@ import Message from "./models/Message.js";
 import Channel from "./models/Channel.js";
 import AutomationRule from "./models/AutomationRule.js";
 import { groq, AI_MODEL, VISION_MODEL } from "./lib/groq.js";
+import { apiLimiter } from "./lib/rateLimiters.js";
 
 dotenv.config();
 connectDB();
@@ -28,9 +30,11 @@ const io = new Server(httpServer, {
   cors: { origin: process.env.CLIENT_URL, credentials: true },
 });
 
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
 app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
+app.use("/api", apiLimiter);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/channels", channelRoutes);
@@ -41,6 +45,15 @@ app.use("/api/summarize", summarizeRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", time: new Date().toISOString() });
+});
+
+app.use("/api", (req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({ message: "Something went wrong" });
 });
 
 io.use((socket, next) => {
@@ -63,7 +76,6 @@ const broadcastOnlineUsers = async () => {
   io.emit("users:online", onlineUserIds);
 };
 
-// --- AI Assistant bot user (seeded once, reused across restarts) ---
 let aiBotUser = null;
 
 const ensureAIBotUser = async () => {
@@ -77,6 +89,31 @@ const ensureAIBotUser = async () => {
     });
   }
   return bot;
+};
+
+const messageRateLimits = new Map(); 
+const MESSAGE_WINDOW_MS = 5000;
+const MESSAGE_MAX_PER_WINDOW = 8;
+
+const isMessageRateLimited = (socketId) => {
+  const now = Date.now();
+  const timestamps = (messageRateLimits.get(socketId) || []).filter(
+    (t) => now - t < MESSAGE_WINDOW_MS
+  );
+  timestamps.push(now);
+  messageRateLimits.set(socketId, timestamps);
+  return timestamps.length > MESSAGE_MAX_PER_WINDOW;
+};
+
+const aiCooldowns = new Map(); // userId -> last request timestamp
+const AI_COOLDOWN_MS = 8000;
+
+const isAiOnCooldown = (userId) => {
+  const last = aiCooldowns.get(userId);
+  const now = Date.now();
+  if (last && now - last < AI_COOLDOWN_MS) return true;
+  aiCooldowns.set(userId, now);
+  return false;
 };
 
 const handleAIRequest = async (channelId, prompt, imageUrl) => {
@@ -105,7 +142,6 @@ const handleAIRequest = async (channelId, prompt, imageUrl) => {
       stream: true,
     };
 
-    // Qwen (vision) model streams its reasoning inline via <think> tags unless suppressed
     if (imageUrl) {
       completionParams.reasoning_format = "hidden";
     }
@@ -120,7 +156,6 @@ const handleAIRequest = async (channelId, prompt, imageUrl) => {
       }
     }
 
-    // Safety net: strip any <think>...</think> block that slipped through
     const cleanText = fullText.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 
     const aiMessage = await Message.create({
@@ -140,8 +175,6 @@ const handleAIRequest = async (channelId, prompt, imageUrl) => {
   }
 };
 
-// Fires a bot reply for the first matching keyword rule in a channel.
-// Skips checking if the message itself came from the bot, to avoid loops.
 const checkAutomationRules = async (channelId, senderId, trimmedContent) => {
   if (!trimmedContent || senderId.toString() === aiBotUser._id.toString()) return;
 
@@ -172,7 +205,6 @@ io.on("connection", async (socket) => {
 
   socket.on("room:join", (channelId) => {
     socket.join(channelId);
-    console.log(`User ${socket.userId} joined room ${channelId}`);
   });
 
   socket.on("room:leave", (channelId) => {
@@ -181,10 +213,15 @@ io.on("connection", async (socket) => {
 
   socket.on("message:send", async (data) => {
     try {
+      if (isMessageRateLimited(socket.id)) {
+        socket.emit("error", { message: "You're sending messages too fast. Please slow down." });
+        return;
+      }
+
       const { channelId, content, attachment } = data;
       if (!channelId || (!content?.trim() && !attachment?.url)) return;
 
-      const trimmed = content?.trim() || "";
+      const trimmed = (content || "").trim().slice(0, 4000);
 
       const message = await Message.create({
         channelId,
@@ -198,13 +235,15 @@ io.on("connection", async (socket) => {
       await Channel.findByIdAndUpdate(channelId, { lastMessage: message._id });
       io.to(channelId).emit("message:new", populated);
 
-      // Detect @ai / /ai trigger
       const aiMatch = trimmed.match(/^(?:@ai|\/ai)\s+([\s\S]+)/i);
       if (aiMatch && aiBotUser) {
+        if (isAiOnCooldown(socket.userId)) {
+          socket.emit("error", { message: "Please wait a few seconds before asking the AI again." });
+          return;
+        }
+
         let imageUrl = attachment?.resourceType === "image" ? attachment.url : null;
 
-        // No image on this message? Check for the most recent image in the channel,
-        // so "@ai what's in this photo" works after uploading separately.
         if (!imageUrl) {
           const lastImageMsg = await Message.findOne({
             channelId,
@@ -234,6 +273,7 @@ io.on("connection", async (socket) => {
 
   socket.on("disconnect", async () => {
     console.log(`User disconnected: ${socket.userId}`);
+    messageRateLimits.delete(socket.id);
     await User.findByIdAndUpdate(socket.userId, { status: "offline", lastSeen: new Date() });
     broadcastOnlineUsers();
   });

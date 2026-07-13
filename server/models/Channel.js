@@ -8,13 +8,16 @@ const channelSchema = new mongoose.Schema(
     },
     type: { 
         type: String, 
-        enum: ["public", "dm"], 
-        default: "public" 
+        enum: ["group", "dm"], 
+        default: "group" 
     },
     members: [
         { 
             type: mongoose.Schema.Types.ObjectId, ref: "User" 
         }
+    ],
+    pendingInvites: [
+      { type: String, trim: true, lowercase: true }
     ],
     createdBy: { 
         type: mongoose.Schema.Types.ObjectId, ref: "User"

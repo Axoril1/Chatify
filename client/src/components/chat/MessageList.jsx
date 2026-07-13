@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../../store/useChatStore";
 import { useSocketStore } from "../../store/useSocketStore";
 import { useAuthStore } from "../../store/useAuthStore";
-import { BsPencil, BsTrash2, BsEmojiSmile, BsList, BsFileEarmark, BsDownload, BsStars, BsClipboardData, BsRobot } from "react-icons/bs";
+import { BsPencil, BsTrash2, BsEmojiSmile, BsList, BsFileEarmark, BsDownload, BsStars, BsClipboardData, BsRobot, BsInfoCircle } from "react-icons/bs";
 import axiosClient from "../../lib/axios";
 import SummaryModal from "./SummaryModal";
 import AutomationModal from "./AutomationModal";
+import GroupDetailsModal from "./GroupDetailsModal";
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢"];
 
@@ -31,9 +32,9 @@ function Attachment({ attachment }) {
           src={attachment.url}
           alt={attachment.fileName}
           style={{
-            maxWidth: "280px",
-            maxHeight: "280px",
-            borderRadius: "8px",
+            maxWidth: "260px",
+            maxHeight: "260px",
+            borderRadius: "10px",
             marginTop: "0.375rem",
             display: "block",
             border: "1px solid var(--border)",
@@ -44,8 +45,8 @@ function Attachment({ attachment }) {
   }
 
   return (
-    <a
-      href={attachment.url}
+    
+      <a href={attachment.url}
       target="_blank"
       rel="noopener noreferrer"
       style={{
@@ -57,7 +58,7 @@ function Attachment({ attachment }) {
         border: "1px solid var(--border)",
         borderRadius: "8px",
         marginTop: "0.375rem",
-        maxWidth: "280px",
+        maxWidth: "260px",
         textDecoration: "none",
         color: "var(--text-primary)",
       }}
@@ -128,23 +129,33 @@ function AIStreamBubble({ text }) {
             typing...
           </span>
         </div>
-        <p style={{
-          fontSize: "0.875rem",
-          color: "var(--text-primary)",
-          lineHeight: "1.5",
-          wordBreak: "break-word",
+        <div style={{
+          background: "var(--bg-elevated)",
+          borderRadius: "14px",
+          borderBottomLeftRadius: "4px",
+          padding: "0.5rem 0.75rem",
+          display: "inline-block",
+          maxWidth: "85%",
         }}>
-          {text}
-          <span style={{
-            display: "inline-block",
-            width: "6px",
-            height: "14px",
-            background: "var(--accent)",
-            marginLeft: "2px",
-            verticalAlign: "middle",
-            animation: "skeleton-pulse 0.8s ease-in-out infinite",
-          }} />
-        </p>
+          <p style={{
+            fontSize: "0.875rem",
+            color: "var(--text-primary)",
+            lineHeight: "1.5",
+            wordBreak: "break-word",
+            margin: 0,
+          }}>
+            {text}
+            <span style={{
+              display: "inline-block",
+              width: "6px",
+              height: "14px",
+              background: "var(--accent)",
+              marginLeft: "2px",
+              verticalAlign: "middle",
+              animation: "skeleton-pulse 0.8s ease-in-out infinite",
+            }} />
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -164,6 +175,7 @@ export default function MessageList({ onMenuClick }) {
   const [showReactions, setShowReactions] = useState(null);
   const [showSummary, setShowSummary] = useState(false);
   const [showAutomations, setShowAutomations] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -324,6 +336,18 @@ export default function MessageList({ onMenuClick }) {
         </div>
         <div style={{ display: "flex", gap: "0.375rem", flexShrink: 0 }}>
           <button
+            onClick={() => setShowDetails(true)}
+            title="Group info"
+            style={{
+              width: "32px", height: "32px", borderRadius: "6px",
+              border: "1px solid var(--border)", background: "transparent",
+              color: "var(--text-secondary)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <BsInfoCircle size={15} />
+          </button>
+          <button
             onClick={() => setShowSummary(true)}
             title="Summarize channel"
             style={{
@@ -350,6 +374,9 @@ export default function MessageList({ onMenuClick }) {
         </div>
       </div>
 
+      {showDetails && (
+        <GroupDetailsModal channel={activeChannel} onClose={() => setShowDetails(false)} />
+      )}
       {showSummary && (
         <SummaryModal channelId={activeChannel._id} onClose={() => setShowSummary(false)} />
       )}
@@ -400,6 +427,7 @@ export default function MessageList({ onMenuClick }) {
                   background: isHovered ? "var(--bg-elevated)" : "transparent",
                   position: "relative",
                   transition: "background 0.1s ease",
+                  flexDirection: isOwn ? "row-reverse" : "row",
                 }}
               >
                 {/* Avatar */}
@@ -420,15 +448,28 @@ export default function MessageList({ onMenuClick }) {
                   {isAI ? <BsStars size={14} color="var(--accent)" /> : (msg.senderId.username?.[0]?.toUpperCase() || "?")}
                 </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: isOwn ? "flex-end" : "flex-start",
+                }}>
                   {/* Sender + time */}
-                  <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", marginBottom: "0.25rem" }}>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: "0.5rem",
+                    marginBottom: "0.25rem",
+                    width: "100%",
+                    justifyContent: isOwn ? "flex-end" : "flex-start",
+                  }}>
                     <span style={{
                       fontSize: "0.8125rem",
                       fontWeight: "600",
                       color: isAI ? "var(--accent)" : isOwn ? "var(--accent)" : "var(--text-primary)",
                     }}>
-                      {msg.senderId.username || "Unknown"}
+                      {isOwn ? "You" : (msg.senderId.username || "Unknown")}
                     </span>
                     <span style={{ fontSize: "0.6875rem", color: "var(--text-secondary)" }}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -442,7 +483,7 @@ export default function MessageList({ onMenuClick }) {
 
                   {/* Content or edit input */}
                   {isEditing ? (
-                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center"}}>
+                    <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", width: "100%" }}>
                       <input
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
@@ -492,23 +533,60 @@ export default function MessageList({ onMenuClick }) {
                       </button>
                     </div>
                   ) : (
-                    <>
-                      <p style={{
-                        fontSize: "0.875rem",
-                        color: isDeleted ? "var(--text-secondary)" : "var(--text-primary)",
-                        fontStyle: isDeleted ? "italic" : "normal",
-                        lineHeight: "1.5",
-                        wordBreak: "break-word",
-                      }}>
-                        {isDeleted ? "This message was deleted" : msg.content}
-                      </p>
-                      {!isDeleted && <Attachment attachment={msg.attachment} />}
-                    </>
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: isOwn ? "flex-end" : "flex-start",
+                      maxWidth: "85%",
+                    }}>
+                      {isDeleted ? (
+                        <p style={{
+                          fontSize: "0.875rem",
+                          color: "var(--text-secondary)",
+                          fontStyle: "italic",
+                          lineHeight: "1.5",
+                          margin: 0,
+                        }}>
+                          This message was deleted
+                        </p>
+                      ) : (
+                        <>
+                          {msg.content && (
+                            <div style={{
+                              background: isOwn ? "var(--accent)" : "var(--bg-elevated)",
+                              color: isOwn ? "#fff" : "var(--text-primary)",
+                              padding: "0.5rem 0.75rem",
+                              borderRadius: "14px",
+                              borderBottomRightRadius: isOwn ? "4px" : "14px",
+                              borderBottomLeftRadius: isOwn ? "14px" : "4px",
+                              display: "inline-block",
+                            }}>
+                              <p style={{
+                                fontSize: "0.875rem",
+                                lineHeight: "1.5",
+                                wordBreak: "break-word",
+                                margin: 0,
+                              }}>
+                                {msg.content}
+                              </p>
+                            </div>
+                          )}
+                          <Attachment attachment={msg.attachment} />
+                        </>
+                      )}
+                    </div>
                   )}
 
                   {/* Reactions display */}
                   {reactionGroups && Object.keys(reactionGroups).length > 0 && (
-                    <div style={{ display: "flex", gap: "0.25rem", marginTop: "0.375rem", flexWrap: "wrap" }}>
+                    <div style={{
+                      display: "flex",
+                      gap: "0.25rem",
+                      marginTop: "0.375rem",
+                      flexWrap: "wrap",
+                      width: "100%",
+                      justifyContent: isOwn ? "flex-end" : "flex-start",
+                    }}>
                       {Object.entries(reactionGroups).map(([emoji, count]) => (
                         <button
                           key={emoji}
@@ -537,7 +615,7 @@ export default function MessageList({ onMenuClick }) {
                 {isHovered && !isDeleted && !isAI && (
                   <div style={{
                     position: "absolute",
-                    right: "0.5rem",
+                    [isOwn ? "left" : "right"]: "0.5rem",
                     top: "0.25rem",
                     display: "flex",
                     gap: "0.25rem",

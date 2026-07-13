@@ -1,21 +1,17 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import Channel from "../models/Channel.js";
 import { signToken, cookieOptions } from "../lib/tokens.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate, signupSchema, loginSchema } from "../lib/validation.js";
+import { authLimiter } from "../lib/rateLimiters.js";
 
 const router = express.Router();
 
-router.post("/signup", async (req, res) => {
+router.post("/signup", authLimiter, validate(signupSchema), async (req, res) => {
   try {
     const { username, email, password } = req.body;
-
-    if (!username || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
-    }
 
     const existing = await User.findOne({ $or: [{ email }, { username }] });
     if (existing) {
@@ -25,9 +21,13 @@ router.post("/signup", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({ username, email, passwordHash, status: "online" });
 
+    await Channel.updateMany(
+      { pendingInvites: email },
+      { $addToSet: { members: user._id }, $pull: { pendingInvites: email } }
+    );
+
     const token = signToken(user._id);
     res.cookie("token", token, cookieOptions);
-
     res.status(201).json({
       user: { id: user._id, username: user.username, email: user.email, avatarUrl: user.avatarUrl },
     });
@@ -36,12 +36,9 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", authLimiter, validate(loginSchema), async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required" });
-    }
 
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: "Invalid email or password" });
@@ -55,7 +52,6 @@ router.post("/login", async (req, res) => {
 
     const token = signToken(user._id);
     res.cookie("token", token, cookieOptions);
-
     res.json({
       user: { id: user._id, username: user.username, email: user.email, avatarUrl: user.avatarUrl },
     });
@@ -68,7 +64,6 @@ router.post("/logout", requireAuth, async (req, res) => {
   req.user.status = "offline";
   req.user.lastSeen = new Date();
   await req.user.save();
-
   res.clearCookie("token", cookieOptions);
   res.json({ message: "Logged out" });
 });

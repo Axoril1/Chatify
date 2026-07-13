@@ -10,20 +10,32 @@ export const useChatStore = create((set, get) => ({
   isLoadingMessages: false,
   typingUsers: {},
   aiStreams: {},
+
   fetchChannels: async () => {
     set({ isLoadingChannels: true });
     try {
       const res = await axiosClient.get("/channels");
       set({ channels: res.data.channels, isLoadingChannels: false });
-
-      if (!get().activeChannel) {
-        const general = res.data.channels.find((c) => c.name === "general");
-        if (general) get().setActiveChannel(general);
-      }
     } catch (err) {
       console.error("Failed to fetch channels:", err);
       set({ isLoadingChannels: false });
     }
+  },
+
+  createGroup: async (name, invites) => {
+    const res = await axiosClient.post("/channels", { name, invites });
+    set((state) => ({ channels: [res.data.channel, ...state.channels] }));
+    return res.data.channel;
+  },
+
+  addMembers: async (channelId, invites) => {
+    const res = await axiosClient.post(`/channels/${channelId}/invite`, { invites });
+    const updated = res.data.channel;
+    set((state) => ({
+      channels: state.channels.map((c) => (c._id === updated._id ? updated : c)),
+      activeChannel: state.activeChannel?._id === updated._id ? updated : state.activeChannel,
+    }));
+    return updated;
   },
 
   setActiveChannel: async (channel) => {

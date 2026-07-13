@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useChatStore } from "../../store/useChatStore";
 import { useSocketStore } from "../../store/useSocketStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import ThemeToggle from "./ThemeToggle";
-import { BsX } from "react-icons/bs";
+import CreateGroupModal from "./CreateGroupModal";
+import { BsX, BsPlusLg } from "react-icons/bs";
 
 function PresenceDot({ isOnline }) {
   return (
@@ -43,6 +45,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const { channels, activeChannel, setActiveChannel, isLoadingChannels } = useChatStore();
   const { socket, onlineUsers } = useSocketStore();
   const { user, logout } = useAuthStore();
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
 
   const handleChannelClick = (channel) => {
     if (activeChannel) socket?.emit("room:leave", activeChannel._id);
@@ -54,6 +57,8 @@ export default function Sidebar({ isOpen, onClose }) {
   return (
     <>
       {isOpen && <div className="sidebar-overlay" onClick={onClose} />}
+
+      {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
 
       <div
         className={`sidebar${isOpen ? " open" : ""}`}
@@ -100,26 +105,67 @@ export default function Sidebar({ isOpen, onClose }) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "0.75rem 0.5rem" }}>
-          <p style={{
-            fontSize: "0.6875rem",
-            fontWeight: "600",
-            color: "var(--text-secondary)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
             padding: "0 0.5rem",
             marginBottom: "0.375rem",
           }}>
-            Channels
-          </p>
+            <p style={{
+              fontSize: "0.6875rem",
+              fontWeight: "600",
+              color: "var(--text-secondary)",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}>
+              Groups
+            </p>
+            <button
+              onClick={() => setShowCreateGroup(true)}
+              title="Create group"
+              style={{
+                width: "22px",
+                height: "22px",
+                borderRadius: "5px",
+                border: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--accent)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <BsPlusLg size={11} />
+            </button>
+          </div>
 
           {isLoadingChannels ? (
             <ChannelSkeleton />
           ) : (
             <>
               {channels.length === 0 && (
-                <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", padding: "0.5rem" }}>
-                  No channels yet
-                </p>
+                <div style={{ padding: "1rem 0.5rem", textAlign: "center" }}>
+                  <p style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", marginBottom: "0.75rem" }}>
+                    You're not in any groups yet.
+                  </p>
+                  <button
+                    onClick={() => setShowCreateGroup(true)}
+                    style={{
+                      padding: "0.5rem 0.875rem",
+                      background: "var(--accent)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: "6px",
+                      fontSize: "0.8125rem",
+                      fontWeight: "600",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Create your first group
+                  </button>
+                </div>
               )}
 
               {channels.map((channel) => (

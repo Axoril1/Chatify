@@ -2,9 +2,26 @@ import express from "express";
 import Message from "../models/Message.js";
 import Channel from "../models/Channel.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate, messageCreateSchema, messageEditSchema, reactionSchema } from "../lib/validation.js";
 import { io } from "../server.js";
 
 const router = express.Router();
+
+router.get("/:channelId/media", requireAuth, async (req, res) => {
+  try {
+    const media = await Message.find({
+      channelId: req.params.channelId,
+      deletedAt: null,
+      "attachment.url": { $exists: true },
+    })
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    res.json({ media });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch media", error: err.message });
+  }
+});
 
 router.get("/:channelId", requireAuth, async (req, res) => {
   try {
@@ -14,10 +31,12 @@ router.get("/:channelId", requireAuth, async (req, res) => {
     const query = { channelId, deletedAt: null };
     if (before) query.createdAt = { $lt: new Date(before) };
 
+    const safeLimit = Math.min(Number(limit) || 30, 100);
+
     const messages = await Message.find(query)
       .populate("senderId", "username avatarUrl status")
       .sort({ createdAt: -1 })
-      .limit(Number(limit));
+      .limit(safeLimit);
 
     res.json({ messages: messages.reverse() });
   } catch (err) {
@@ -25,12 +44,9 @@ router.get("/:channelId", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", requireAuth, validate(messageCreateSchema), async (req, res) => {
   try {
     const { channelId, content, attachment } = req.body;
-    if (!channelId || (!content?.trim() && !attachment?.url)) {
-      return res.status(400).json({ message: "channelId and content or attachment are required" });
-    }
 
     const message = await Message.create({
       channelId,
@@ -50,7 +66,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/:id", requireAuth, async (req, res) => {
+router.patch("/:id", requireAuth, validate(messageEditSchema), async (req, res) => {
   try {
     const { content } = req.body;
     const message = await Message.findById(req.params.id);
@@ -93,7 +109,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/:id/react", requireAuth, async (req, res) => {
+router.post("/:id/react", requireAuth, validate(reactionSchema), async (req, res) => {
   try {
     const { emoji } = req.body;
     const message = await Message.findById(req.params.id);
