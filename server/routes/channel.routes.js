@@ -1,8 +1,9 @@
 import express from "express";
 import Channel from "../models/Channel.js";
 import { requireAuth } from "../middleware/requireAuth.js";
-import { validate, channelCreateSchema, inviteSchema, dmCreateSchema } from "../lib/validation.js";
+import { validate, channelCreateSchema, inviteSchema, groupAvatarSchema, dmCreateSchema } from "../lib/validation.js";
 import { resolveInvites } from "../lib/inviteResolver.js";
+import { io } from "../server.js";
 
 const router = express.Router();
 
@@ -89,6 +90,32 @@ router.post("/:id/invite", requireAuth, validate(inviteSchema), async (req, res)
     res.json({ channel: populated });
   } catch (err) {
     res.status(500).json({ message: "Failed to add members", error: err.message });
+  }
+});
+
+router.patch("/:id/avatar", requireAuth, validate(groupAvatarSchema), async (req, res) => {
+  try {
+    const channel = await Channel.findById(req.params.id);
+    if (!channel) return res.status(404).json({ message: "Group not found" });
+
+    const isMember = channel.members.some((m) => m.toString() === req.user._id.toString());
+    if (!isMember) {
+      return res.status(403).json({ message: "You're not a member of this group" });
+    }
+
+    channel.avatarUrl = req.body.avatarUrl;
+    await channel.save();
+
+    const populated = await channel.populate([
+      { path: "members", select: "username email avatarUrl status" },
+      { path: "createdBy", select: "username" },
+    ]);
+
+    io.to(channel._id.toString()).emit("channel:updated", populated);
+
+    res.json({ channel: populated });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update group photo", error: err.message });
   }
 });
 

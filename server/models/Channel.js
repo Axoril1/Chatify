@@ -11,6 +11,10 @@ const channelSchema = new mongoose.Schema(
         enum: ["group", "dm"], 
         default: "group" 
     },
+    avatarUrl: {
+      type: String,
+      default: "",
+    },
     members: [
         { 
             type: mongoose.Schema.Types.ObjectId, ref: "User" 

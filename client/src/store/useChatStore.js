@@ -38,6 +38,13 @@ export const useChatStore = create((set, get) => ({
     return updated;
   },
 
+  updateChannel: (updated) => {
+    set((state) => ({
+      channels: state.channels.map((c) => (c._id === updated._id ? updated : c)),
+      activeChannel: state.activeChannel?._id === updated._id ? updated : state.activeChannel,
+    }));
+  },
+
   setActiveChannel: async (channel) => {
     const socket = useSocketStore.getState().socket;
 

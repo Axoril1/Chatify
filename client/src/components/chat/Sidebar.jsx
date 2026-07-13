@@ -4,6 +4,7 @@ import { useSocketStore } from "../../store/useSocketStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import ThemeToggle from "./ThemeToggle";
 import CreateGroupModal from "./CreateGroupModal";
+import ProfileModal from "./ProfileModal";
 import { BsX, BsPlusLg } from "react-icons/bs";
 
 function PresenceDot({ isOnline }) {
@@ -46,6 +47,7 @@ export default function Sidebar({ isOpen, onClose }) {
   const { socket, onlineUsers } = useSocketStore();
   const { user, logout } = useAuthStore();
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   const handleChannelClick = (channel) => {
     if (activeChannel) socket?.emit("room:leave", activeChannel._id);
@@ -59,6 +61,7 @@ export default function Sidebar({ isOpen, onClose }) {
       {isOpen && <div className="sidebar-overlay" onClick={onClose} />}
 
       {showCreateGroup && <CreateGroupModal onClose={() => setShowCreateGroup(false)} />}
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
 
       <div
         className={`sidebar${isOpen ? " open" : ""}`}
@@ -189,7 +192,15 @@ export default function Sidebar({ isOpen, onClose }) {
                     gap: "0.5rem",
                   }}
                 >
-                  <span style={{ color: "var(--text-secondary)" }}>#</span>
+                  {channel.avatarUrl ? (
+                    <img
+                      src={channel.avatarUrl}
+                      alt=""
+                      style={{ width: "18px", height: "18px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                    />
+                  ) : (
+                    <span style={{ color: "var(--text-secondary)" }}>#</span>
+                  )}
                   <span style={{ flex: 1 }}>{channel.name}</span>
                 </button>
               ))}
@@ -204,27 +215,44 @@ export default function Sidebar({ isOpen, onClose }) {
           flexDirection: "column",
           gap: "0.5rem",
         }}>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            padding: "0.375rem 0.5rem",
-          }}>
-            <div style={{
-              width: "28px",
-              height: "28px",
-              borderRadius: "50%",
-              background: "var(--accent)",
+          <button
+            onClick={() => setShowProfile(true)}
+            style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              fontSize: "0.75rem",
-              fontWeight: "600",
-              color: "#fff",
-              flexShrink: 0,
-            }}>
-              {user?.username?.[0]?.toUpperCase()}
-            </div>
+              gap: "0.5rem",
+              padding: "0.375rem 0.5rem",
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              textAlign: "left",
+              borderRadius: "6px",
+              width: "100%",
+            }}
+          >
+            {user?.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.username}
+                style={{ width: "28px", height: "28px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+              />
+            ) : (
+              <div style={{
+                width: "28px",
+                height: "28px",
+                borderRadius: "50%",
+                background: "var(--accent)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "0.75rem",
+                fontWeight: "600",
+                color: "#fff",
+                flexShrink: 0,
+              }}>
+                {user?.username?.[0]?.toUpperCase()}
+              </div>
+            )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ fontSize: "0.8125rem", fontWeight: "500", color: "var(--text-primary)" }}>
                 {user?.username}
@@ -236,7 +264,7 @@ export default function Sidebar({ isOpen, onClose }) {
                 </span>
               </div>
             </div>
-          </div>
+          </button>
 
           <button
             onClick={logout}

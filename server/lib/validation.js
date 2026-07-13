@@ -11,6 +11,17 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const profileUpdateSchema = z.object({
+  username: z.string().trim().min(3, "Username must be at least 3 characters").max(24).optional(),
+  email: z.string().trim().toLowerCase().email("Invalid email address").optional(),
+  avatarUrl: z.string().url("Invalid avatar URL").optional(),
+});
+
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters").max(72),
+});
+
 export const channelCreateSchema = z.object({
   name: z.string().trim().min(1, "Group name is required").max(50),
   invites: z.array(z.string().trim().min(1)).max(20).optional().default([]),
@@ -18,6 +29,10 @@ export const channelCreateSchema = z.object({
 
 export const inviteSchema = z.object({
   invites: z.array(z.string().trim().min(1)).min(1, "At least one invite is required").max(20),
+});
+
+export const groupAvatarSchema = z.object({
+  avatarUrl: z.string().url("A valid avatar URL is required"),
 });
 
 export const dmCreateSchema = z.object({
