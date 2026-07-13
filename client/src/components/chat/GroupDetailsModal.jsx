@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BsX, BsInfoCircle, BsPersonPlus, BsFileEarmark, BsEnvelope, BsPerson } from "react-icons/bs";
+import { BsX, BsInfoCircle, BsPersonPlus, BsFileEarmark, BsEnvelope, BsPerson, BsCamera, BsPeopleFill } from "react-icons/bs";
 import { useChatStore } from "../../store/useChatStore";
 import { useSocketStore } from "../../store/useSocketStore";
 import { useAuthStore } from "../../store/useAuthStore";
@@ -28,13 +28,16 @@ export default function GroupDetailsModal({ channel, onClose }) {
   const [pendingInvites, setPendingInvites] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
 
   const { onlineUsers } = useSocketStore();
   const { user } = useAuthStore();
   const addMembers = useChatStore((s) => s.addMembers);
+  const updateChannel = useChatStore((s) => s.updateChannel);
   const channels = useChatStore((s) => s.channels);
 
-  // Use the live copy from the store so it reflects newly added members instantly
+  // Use the live copy from the store so it reflects newly added members/avatar instantly
   const liveChannel = channels.find((c) => c._id === channel._id) || channel;
   const isCreator = liveChannel.createdBy?._id === user._id || liveChannel.createdBy === user._id;
 
@@ -47,6 +50,33 @@ export default function GroupDetailsModal({ channel, onClose }) {
       .catch((err) => console.error("Failed to fetch media:", err))
       .finally(() => setIsLoadingMedia(false));
   }, [tab, channel._id]);
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please choose an image file");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    setAvatarError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await axiosClient.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const res = await axiosClient.patch(`/channels/${channel._id}/avatar`, { avatarUrl: uploadRes.data.url });
+      updateChannel(res.data.channel);
+    } catch (err) {
+      setAvatarError(err.response?.data?.message || "Failed to update group photo");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const addPendingInvite = () => {
     const trimmed = inviteInput.trim();
@@ -128,6 +158,49 @@ export default function GroupDetailsModal({ channel, onClose }) {
           >
             <BsX size={20} />
           </button>
+        </div>
+
+        <div style={{ padding: "1.25rem 1rem 1rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem", borderBottom: "1px solid var(--border)" }}>
+          <label style={{ position: "relative", cursor: "pointer" }}>
+            <input type="file" accept="image/*" onChange={handleAvatarChange} style={{ display: "none" }} disabled={isUploadingAvatar} />
+            {liveChannel.avatarUrl ? (
+              <img
+                src={liveChannel.avatarUrl}
+                alt={liveChannel.name}
+                style={{
+                  width: "64px", height: "64px", borderRadius: "50%",
+                  objectFit: "cover", border: "2px solid var(--border)",
+                  opacity: isUploadingAvatar ? 0.5 : 1,
+                }}
+              />
+            ) : (
+              <div style={{
+                width: "64px", height: "64px", borderRadius: "50%",
+                background: "var(--accent-muted)", display: "flex", alignItems: "center",
+                justifyContent: "center", opacity: isUploadingAvatar ? 0.5 : 1,
+              }}>
+                <BsPeopleFill size={24} color="var(--accent)" />
+              </div>
+            )}
+            <div style={{
+              position: "absolute", bottom: 0, right: 0,
+              width: "22px", height: "22px", borderRadius: "50%",
+              background: "var(--accent)", display: "flex",
+              alignItems: "center", justifyContent: "center",
+              border: "2px solid var(--bg-surface)",
+            }}>
+              <BsCamera size={10} color="#fff" />
+            </div>
+          </label>
+          {isUploadingAvatar && (
+            <p style={{ fontSize: "0.6875rem", color: "var(--text-secondary)" }}>Uploading...</p>
+          )}
+          {avatarError && (
+            <p style={{ fontSize: "0.6875rem", color: "var(--error)" }}>{avatarError}</p>
+          )}
+          <p style={{ fontSize: "0.6875rem", color: "var(--text-secondary)" }}>
+            Any member can change the group photo
+          </p>
         </div>
 
         <div style={{ display: "flex", borderBottom: "1px solid var(--border)" }}>
@@ -292,21 +365,29 @@ export default function GroupDetailsModal({ channel, onClose }) {
                     padding: "0.5rem",
                   }}
                 >
-                  <div style={{
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "50%",
-                    background: "var(--accent)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "0.75rem",
-                    fontWeight: "600",
-                    color: "#fff",
-                    flexShrink: 0,
-                  }}>
-                    {member.username?.[0]?.toUpperCase()}
-                  </div>
+                  {member.avatarUrl ? (
+                    <img
+                      src={member.avatarUrl}
+                      alt={member.username}
+                      style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                    />
+                  ) : (
+                    <div style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "50%",
+                      background: "var(--accent)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "0.75rem",
+                      fontWeight: "600",
+                      color: "#fff",
+                      flexShrink: 0,
+                    }}>
+                      {member.username?.[0]?.toUpperCase()}
+                    </div>
+                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: "0.8125rem", color: "var(--text-primary)" }}>
                       {member.username}
@@ -358,9 +439,7 @@ export default function GroupDetailsModal({ channel, onClose }) {
               {!isLoadingMedia && media.length > 0 && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
                   {media.map((m) => (
-                    <a
-                      key={m._id}
-                      href={m.attachment.url}
+                    <a key={m._id} href={m.attachment.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{ textDecoration: "none" }}
